@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import math
 import random
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable
 from statistics import mean, pstdev
 from typing import Any
 
@@ -24,13 +24,18 @@ class AnomalyDetector:
     """
 
     def __init__(self, z_threshold: float = 3.0) -> None:
-        if z_threshold <= 0:
-            raise ValueError("z_threshold must be positive")
-        self.z_threshold = z_threshold
+        if (
+            isinstance(z_threshold, bool)
+            or not isinstance(z_threshold, (int, float))
+            or not math.isfinite(z_threshold)
+            or z_threshold <= 0
+        ):
+            raise ValueError("z_threshold must be a finite positive number")
+        self.z_threshold = float(z_threshold)
         self._centres: dict[str, float] | None = None
         self._scales: dict[str, float] | None = None
 
-    def fit(self, rows: Iterable[dict[str, Any]]) -> "AnomalyDetector":
+    def fit(self, rows: Iterable[dict[str, Any]]) -> AnomalyDetector:
         validated = _validate_rows(rows, require_label=True)
         normal_rows = [row for row in validated if row["label"] == 0]
         if len(normal_rows) < 2:

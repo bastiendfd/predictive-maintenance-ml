@@ -1,6 +1,9 @@
 import json
+import math
 import subprocess
 import sys
+
+import pytest
 
 from predictive_maintenance.baseline import (
     AnomalyDetector,
@@ -67,6 +70,12 @@ def test_detector_rejects_invalid_training_rows():
         raise AssertionError("Expected fit() to reject a row without a label")
 
 
+@pytest.mark.parametrize("threshold", [math.nan, math.inf, -math.inf, True, False])
+def test_detector_rejects_non_finite_or_boolean_thresholds(threshold):
+    with pytest.raises(ValueError, match="finite positive number"):
+        AnomalyDetector(threshold)
+
+
 def test_module_cli_emits_json_metrics():
     completed = subprocess.run(
         [sys.executable, "-m", "predictive_maintenance", "--samples", "80", "--seed", "3"],
@@ -81,3 +90,28 @@ def test_module_cli_emits_json_metrics():
     assert report["validation"]["training_samples"] == 56
     assert report["validation"]["validation_samples"] == 24
     assert report["validation"]["metrics"]["recall"] >= 0.0
+
+
+@pytest.mark.parametrize(
+    "arguments, expected_error",
+    [
+        (["--z-threshold", "nan"], "z-threshold must be a finite positive number"),
+        (["--z-threshold", "inf"], "z-threshold must be a finite positive number"),
+        (["--samples", "2"], "samples must be at least 4"),
+        (["--samples", "3"], "samples must be at least 4"),
+        (["--samples", "4", "--anomaly-rate", "0.5"], "fewer than two normal training rows"),
+        (["--anomaly-rate", "nan"], "anomaly-rate must be a finite number between 0 and 1"),
+    ],
+)
+def test_module_cli_rejects_invalid_inputs_without_traceback(arguments, expected_error):
+    completed = subprocess.run(
+        [sys.executable, "-m", "predictive_maintenance", *arguments],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert completed.returncode == 2
+    assert expected_error in completed.stderr
+    assert "Traceback" not in completed.stderr
+    assert completed.stdout == ""
